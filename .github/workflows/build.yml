@@ -1,0 +1,95 @@
+name: Build Phoenicxfin
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'assets/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Official Jellyfin Android release that Phoenicxfin is built on
+  UPSTREAM_TAG: v2.7.3
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Phoenicxfin
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Check signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Add the KEYSTORE_BASE64 and KEYSTORE_PASSWORD secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/phoenicxfin.jks"
+
+      - name: Download Jellyfin Android source
+        run: git clone --depth 1 --branch "$UPSTREAM_TAG" https://github.com/jellyfin/jellyfin-android.git upstream
+
+      - name: Apply Phoenicxfin changes
+        working-directory: upstream
+        run: git apply --whitespace=nowarn ../phoenicxfin.patch
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        working-directory: upstream
+        env:
+          JELLYFIN_VERSION: ${{ steps.version.outputs.value }}
+          KEYSTORE_FILE: ${{ runner.temp }}/phoenicxfin.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: phoenicxfin
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: ./gradlew --no-daemon assembleLibreRelease
+
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp "$(find upstream/app/build/outputs/apk/libre/release -name '*.apk' | head -n 1)" out/Phoenicxfin.apk
+          rm -f "$RUNNER_TEMP/phoenicxfin.jks"
+          ls -la out
+
+      - name: Upload APK (Actions artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phoenicxfin-${{ steps.version.outputs.value }}
+          path: out/Phoenicxfin.apk
+          if-no-files-found: error
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.value }}
+          name: Phoenicxfin ${{ steps.version.outputs.value }}
+          overwrite_files: true
+          make_latest: true
+          body: |
+            **Phoenicxfin ${{ steps.version.outputs.value }}**, a Jellyfin client for Fire TV and Android TV.
+            Based on the official Jellyfin Android app ${{ env.UPSTREAM_TAG }}.
+
+            **Install on Fire TV:** open the *Downloader* app and enter
+            `https://github.com/${{ github.repository }}/releases/latest/download/Phoenicxfin.apk`
+
+            See the [README](https://github.com/${{ github.repository }}#readme) for setup, remote controls and custom CSS tips.
+          files: out/Phoenicxfin.apk
