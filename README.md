@@ -36,14 +36,18 @@ Phoenicxfin fixes that. It runs the **same Jellyfin web interface** as your othe
 1. **Settings → My Fire TV → Developer options → Install unknown apps**, and turn it on for **Downloader**.
    (If you don't see *Developer options*, go to **Settings → My Fire TV → About** and click your device name 7 times.)
 2. Install **Downloader** (by AFTVnews) from the Amazon Appstore.
-3. Open Downloader and enter:
+3. Open Downloader and enter the code **`4351534`**, then press **Go**.
+
+   <p><img alt="Downloader code 4351534" src="https://img.shields.io/badge/Downloader%20code-4351534-a99aff?style=for-the-badge"></p>
+
+   Or type the full link instead:
    ```
    https://github.com/hansonds/Phoenicxfin/releases/latest/download/Phoenicxfin.apk
    ```
 4. Install, then open **Phoenicxfin** from *Your Apps & Channels*.
 
 ### Android TV / Google TV
-Download `Phoenicxfin.apk` from the [latest release](../../releases/latest) and sideload it (for example with Downloader or *Send Files to TV*).
+Install **Downloader** from the Google Play Store and enter the code **`4351534`**, or download `Phoenicxfin.apk` from the [latest release](../../releases/latest) and sideload it (for example with *Send Files to TV*).
 
 ### First start
 Enter your Jellyfin server address (for example `https://jellyfin.example.com` or `http://192.168.1.10:8096`), then sign in. Servers on your home network usually show up automatically.
