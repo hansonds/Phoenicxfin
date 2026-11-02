@@ -78,9 +78,18 @@ index 7704ed2..df3c94a 100644
      ];
      for (const script of scripts) {
 diff --git a/app/src/main/assets/native/nativeshell.js b/app/src/main/assets/native/nativeshell.js
-index 30f77cc..d1c931b 100644
+index 30f77cc..f28dcde 100644
 --- a/app/src/main/assets/native/nativeshell.js
 +++ b/app/src/main/assets/native/nativeshell.js
+@@ -4,7 +4,7 @@ const features = [
+     "displaylanguage",
+     "downloadmanagement",
+     "exit",
+-    "externallinks",
++    // Phoenicxfin: no external website links (IMDb, TMDb...) in the interface
+     "filedownload",
+     "fileinput",
+     "htmlaudioautoplay",
 @@ -106,7 +106,8 @@ function getDeviceProfile(profileBuilder, item) {
  window.NativeShell.AppHost = {
      init() {},
@@ -372,8 +381,30 @@ index 0000000..3c9c12d
 +        }
 +    } catch (e) { /* ignore */ }
 +})();
+diff --git a/app/src/main/java/org/jellyfin/mobile/JellyfinApplication.kt b/app/src/main/java/org/jellyfin/mobile/JellyfinApplication.kt
+index 5acc9f1..8f59e34 100644
+--- a/app/src/main/java/org/jellyfin/mobile/JellyfinApplication.kt
++++ b/app/src/main/java/org/jellyfin/mobile/JellyfinApplication.kt
+@@ -5,6 +5,7 @@ import android.webkit.WebView
+ import org.jellyfin.mobile.app.apiModule
+ import org.jellyfin.mobile.app.applicationModule
+ import org.jellyfin.mobile.data.databaseModule
++import org.jellyfin.mobile.utils.CrashReporter
+ import org.jellyfin.mobile.utils.JellyTree
+ import org.jellyfin.mobile.utils.isWebViewSupported
+ import org.koin.android.ext.koin.androidContext
+@@ -17,6 +18,9 @@ class JellyfinApplication : Application() {
+     override fun onCreate() {
+         super.onCreate()
+ 
++        // Phoenicxfin: remember crash details so they can be shown on the next start
++        CrashReporter.install(this)
++
+         // Setup logging
+         Timber.plant(JellyTree())
+ 
 diff --git a/app/src/main/java/org/jellyfin/mobile/MainActivity.kt b/app/src/main/java/org/jellyfin/mobile/MainActivity.kt
-index e655ecb..dfd2ab2 100644
+index e655ecb..79baded 100644
 --- a/app/src/main/java/org/jellyfin/mobile/MainActivity.kt
 +++ b/app/src/main/java/org/jellyfin/mobile/MainActivity.kt
 @@ -8,6 +8,7 @@ import android.graphics.Color
@@ -384,7 +415,25 @@ index e655ecb..dfd2ab2 100644
  import android.view.OrientationEventListener
  import android.widget.Toast
  import androidx.activity.OnBackPressedCallback
-@@ -191,6 +192,21 @@ class MainActivity : AppCompatActivity() {
+@@ -31,6 +32,7 @@ import org.jellyfin.mobile.utils.AndroidVersion
+ import org.jellyfin.mobile.utils.BackPressInterceptor
+ import org.jellyfin.mobile.utils.BluetoothPermissionHelper
+ import org.jellyfin.mobile.utils.Constants
++import org.jellyfin.mobile.utils.CrashReporter
+ import org.jellyfin.mobile.utils.PermissionRequestHelper
+ import org.jellyfin.mobile.utils.SmartOrientationListener
+ import org.jellyfin.mobile.utils.extensions.replaceFragment
+@@ -142,6 +144,9 @@ class MainActivity : AppCompatActivity() {
+         // Handle back presses
+         onBackPressedDispatcher.addCallback(this, onBackPressed = onBackPressedCallback)
+ 
++        // Phoenicxfin: show what went wrong if the app crashed last time
++        CrashReporter.showLastCrashIfAny(this)
++
+         // Setup Chromecast
+         chromecast.initializePlugin(this)
+     }
+@@ -191,6 +196,21 @@ class MainActivity : AppCompatActivity() {
          return true
      }
  
@@ -406,8 +455,42 @@ index e655ecb..dfd2ab2 100644
      override fun onUserLeaveHint() {
          super.onUserLeaveHint()
          for (fragment in supportFragmentManager.fragments) {
+diff --git a/app/src/main/java/org/jellyfin/mobile/app/AppPreferences.kt b/app/src/main/java/org/jellyfin/mobile/app/AppPreferences.kt
+index 0f33bc1..4fc9770 100644
+--- a/app/src/main/java/org/jellyfin/mobile/app/AppPreferences.kt
++++ b/app/src/main/java/org/jellyfin/mobile/app/AppPreferences.kt
+@@ -2,6 +2,7 @@ package org.jellyfin.mobile.app
+ 
+ import android.content.Context
+ import android.content.SharedPreferences
++import android.content.pm.PackageManager
+ import android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+ import androidx.core.content.edit
+ import org.jellyfin.mobile.downloads.DownloadMethod
+@@ -16,6 +17,11 @@ class AppPreferences(context: Context) {
+     private val sharedPreferences: SharedPreferences =
+         context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
+ 
++    /** Phoenicxfin: true on Fire TV / Android TV devices */
++    private val isTvDevice: Boolean = context.packageManager.let { pm ->
++        pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK) || !pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)
++    }
++
+     var currentServerId: Long?
+         get() = sharedPreferences.getLong(Constants.PREF_SERVER_ID, -1).takeIf { it >= 0 }
+         set(value) {
+@@ -123,7 +129,8 @@ class AppPreferences(context: Context) {
+         get() = sharedPreferences.getBoolean(Constants.PREF_EXOPLAYER_ALLOW_HORIZONTAL_GESTURE, true)
+ 
+     val exoPlayerDirectPlayAss: Boolean
+-        get() = sharedPreferences.getBoolean(Constants.PREF_EXOPLAYER_DIRECT_PLAY_ASS, false)
++        // Phoenicxfin: on TVs, direct play styled (ASS/SSA) subtitles by default to avoid server transcoding
++        get() = sharedPreferences.getBoolean(Constants.PREF_EXOPLAYER_DIRECT_PLAY_ASS, isTvDevice)
+ 
+     val exoPlayerNetworkBuffer: String
+         get() = sharedPreferences.getString(Constants.PREF_EXOPLAYER_NETWORK_BUFFER, Constants.NETWORK_BUFFER_AUTO)!!
 diff --git a/app/src/main/java/org/jellyfin/mobile/player/ui/PlayerFragment.kt b/app/src/main/java/org/jellyfin/mobile/player/ui/PlayerFragment.kt
-index c307fd6..6dfddbc 100644
+index c307fd6..88d822b 100644
 --- a/app/src/main/java/org/jellyfin/mobile/player/ui/PlayerFragment.kt
 +++ b/app/src/main/java/org/jellyfin/mobile/player/ui/PlayerFragment.kt
 @@ -3,18 +3,24 @@ package org.jellyfin.mobile.player.ui
@@ -457,7 +540,7 @@ index c307fd6..6dfddbc 100644
  import org.jellyfin.mobile.player.ui.playermenuhelper.PlayerMenuHelper
  import org.jellyfin.mobile.utils.AndroidVersion
  import org.jellyfin.mobile.utils.BackPressInterceptor
-@@ -51,15 +62,28 @@ import org.jellyfin.mobile.utils.extensions.getParcelableCompat
+@@ -51,15 +62,32 @@ import org.jellyfin.mobile.utils.extensions.getParcelableCompat
  import org.jellyfin.mobile.utils.extensions.isLandscape
  import org.jellyfin.mobile.utils.extensions.keepScreenOn
  import org.jellyfin.mobile.utils.toast
@@ -467,6 +550,7 @@ index c307fd6..6dfddbc 100644
  import org.jellyfin.sdk.model.api.MediaSegmentDto
  import org.jellyfin.sdk.model.api.MediaStream
  import org.koin.android.ext.android.inject
++import timber.log.Timber
 +import java.net.URL
 +import java.util.Date
 +import java.util.UUID
@@ -479,6 +563,9 @@ index c307fd6..6dfddbc 100644
 +/** Phoenicxfin TV: refresh interval for the "Ends at" time */
 +private const val TV_INFO_UPDATE_MS = 1_000L
 +
++/** Phoenicxfin TV: network timeout for the title logo */
++private const val TV_LOGO_TIMEOUT_MS = 5_000
++
  @Suppress("TooManyFunctions")
  class PlayerFragment : Fragment(), BackPressInterceptor {
      private val appPreferences: AppPreferences by inject()
@@ -486,7 +573,7 @@ index c307fd6..6dfddbc 100644
      private val viewModel: PlayerViewModel by viewModels()
      private var _playerBinding: FragmentPlayerBinding? = null
      private val playerBinding: FragmentPlayerBinding get() = _playerBinding!!
-@@ -77,6 +101,15 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
+@@ -77,6 +105,15 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
      lateinit var playerLockScreenHelper: PlayerLockScreenHelper
      lateinit var playerGestureHelper: PlayerGestureHelper
  
@@ -502,15 +589,17 @@ index c307fd6..6dfddbc 100644
      private val currentVideoStream: MediaStream?
          get() = viewModel.mediaSourceOrNull?.selectedVideoStream
  
-@@ -127,6 +160,7 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
+@@ -127,6 +164,9 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
  
              // Update title and player menus
              toolbar.title = mediaSource.getName(requireContext())
-+            if (isTvDevice) updateTvHeader(mediaSource)
++            if (isTvDevice) {
++                runCatching { updateTvHeader(mediaSource) }.onFailure { e -> Timber.e(e, "TV header failed") }
++            }
              playerMenus?.onQueueItemChanged(mediaSource, viewModel.queueManager.hasNext())
          }
  
-@@ -218,6 +252,214 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
+@@ -218,6 +258,230 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
          fullscreenSwitcher.setOnClickListener {
              toggleFullscreen()
          }
@@ -530,6 +619,11 @@ index c307fd6..6dfddbc 100644
 +    /** Phoenicxfin TV: keeps the "Ends at" time up to date */
 +    private val tvInfoUpdater = object : Runnable {
 +        override fun run() {
++            runCatching { update() }.onFailure { e -> Timber.e(e, "TV info update failed") }
++            _playerBinding?.root?.postDelayed(this, TV_INFO_UPDATE_MS)
++        }
++
++        private fun update() {
 +            val binding = _playerBinding ?: return
 +            val endsAt = binding.root.findViewById<TextView>(R.id.tv_ends_at)
 +            val player = viewModel.playerOrNull
@@ -539,7 +633,6 @@ index c307fd6..6dfddbc 100644
 +                val endTime = DateFormat.getTimeFormat(binding.root.context).format(Date(System.currentTimeMillis() + remainingMs))
 +                endsAt.text = binding.root.context.getString(R.string.tv_player_ends_at, endTime)
 +            }
-+            binding.root.postDelayed(this, TV_INFO_UPDATE_MS)
 +        }
 +    }
 +
@@ -596,7 +689,13 @@ index c307fd6..6dfddbc 100644
 +        val url = "${baseUrl.trimEnd('/')}/Items/$logoItemId/Images/Logo?maxHeight=200&quality=90"
 +        viewLifecycleOwner.lifecycleScope.launch {
 +            val bitmap = withContext(Dispatchers.IO) {
-+                runCatching { URL(url).openStream().use { stream -> BitmapFactory.decodeStream(stream) } }.getOrNull()
++                runCatching {
++                    val connection = URL(url).openConnection().apply {
++                        connectTimeout = TV_LOGO_TIMEOUT_MS
++                        readTimeout = TV_LOGO_TIMEOUT_MS
++                    }
++                    connection.getInputStream().use { stream -> BitmapFactory.decodeStream(stream) }
++                }.getOrNull()
 +            }
 +            val currentBinding = _playerBinding ?: return@launch
 +            val logo = currentBinding.root.findViewById<ImageView>(R.id.tv_logo) ?: return@launch
@@ -621,7 +720,13 @@ index c307fd6..6dfddbc 100644
 +     * @return true if the event was consumed
 +     */
 +    @Suppress("CyclomaticComplexMethod", "ReturnCount", "LongMethod")
-+    fun onTvKeyEvent(event: KeyEvent): Boolean {
++    fun onTvKeyEvent(event: KeyEvent): Boolean = runCatching { handleTvKeyEvent(event) }.getOrElse { e ->
++        Timber.e(e, "TV key handling failed")
++        false
++    }
++
++    @Suppress("CyclomaticComplexMethod", "ReturnCount", "LongMethod")
++    private fun handleTvKeyEvent(event: KeyEvent): Boolean {
 +        if (_playerBinding == null || !playerView.useController) return false
 +        val player = viewModel.playerOrNull ?: return false
 +        val keyCode = event.keyCode
@@ -725,7 +830,7 @@ index c307fd6..6dfddbc 100644
      }
  
      override fun onStart() {
-@@ -367,6 +609,11 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
+@@ -367,6 +631,11 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
      }
  
      fun onUserLeaveHint() {
@@ -737,12 +842,12 @@ index c307fd6..6dfddbc 100644
          if (AndroidVersion.isAtLeastN && viewModel.playerOrNull != null) {
              requireActivity().enterPictureInPicture()
          }
-@@ -424,6 +671,8 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
+@@ -424,6 +693,8 @@ class PlayerFragment : Fragment(), BackPressInterceptor {
  
      override fun onDestroyView() {
          super.onDestroyView()
 +        // Phoenicxfin TV: stop the "Ends at" updates
-+        playerBinding.root.removeCallbacks(tvInfoUpdater)
++        _playerBinding?.root?.removeCallbacks(tvInfoUpdater)
          // Detach player from PlayerView
          playerView.player = null
  
@@ -776,6 +881,133 @@ index 85a2de9..e296f0f 100644
      const val APP_INFO_VERSION: String = BuildConfig.VERSION_NAME
  
      // Webapp constants
+diff --git a/app/src/main/java/org/jellyfin/mobile/utils/CrashReporter.kt b/app/src/main/java/org/jellyfin/mobile/utils/CrashReporter.kt
+new file mode 100644
+index 0000000..fa218c4
+--- /dev/null
++++ b/app/src/main/java/org/jellyfin/mobile/utils/CrashReporter.kt
+@@ -0,0 +1,55 @@
++package org.jellyfin.mobile.utils
++
++import android.app.Activity
++import android.content.Context
++import android.os.Build
++import androidx.appcompat.app.AlertDialog
++import org.jellyfin.mobile.BuildConfig
++import java.io.File
++import java.io.PrintWriter
++import java.io.StringWriter
++
++/**
++ * Phoenicxfin: saves the details of a crash, and shows them on the next app start,
++ * so users can report exactly what went wrong (Fire TV has no way to see app errors).
++ */
++object CrashReporter {
++    private const val FILE_NAME = "last_crash.txt"
++    private const val MAX_LENGTH = 6000
++
++    fun install(context: Context) {
++        val appContext = context.applicationContext
++        val previous = Thread.getDefaultUncaughtExceptionHandler()
++        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
++            runCatching {
++                val trace = StringWriter().also { writer -> throwable.printStackTrace(PrintWriter(writer)) }.toString()
++                val report = buildString {
++                    appendLine("Phoenicxfin ${BuildConfig.VERSION_NAME}")
++                    appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})")
++                    appendLine("Thread: ${thread.name}")
++                    appendLine()
++                    append(trace)
++                }
++                File(appContext.filesDir, FILE_NAME).writeText(report.take(MAX_LENGTH))
++            }
++            previous?.uncaughtException(thread, throwable)
++        }
++    }
++
++    fun showLastCrashIfAny(activity: Activity) {
++        val file = File(activity.filesDir, FILE_NAME)
++        if (!file.exists()) return
++        val report = runCatching { file.readText() }.getOrNull()
++        file.delete()
++        if (report.isNullOrBlank()) return
++
++        AlertDialog.Builder(activity)
++            .setTitle("Phoenicxfin closed unexpectedly")
++            .setMessage(
++                "Please take a photo of this screen and report it at\n" +
++                    "github.com/hansonds/Phoenicxfin/issues\n\n" + report,
++            )
++            .setPositiveButton(android.R.string.ok, null)
++            .show()
++    }
++}
+diff --git a/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebChromeClient.kt b/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebChromeClient.kt
+index dac4e0d..10e11a6 100644
+--- a/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebChromeClient.kt
++++ b/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebChromeClient.kt
+@@ -62,7 +62,11 @@ class JellyfinWebChromeClient(
+         if (url == "about:blank") return false
+ 
+         val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+-        context.startActivity(intent)
++        try {
++            context.startActivity(intent)
++        } catch (e: android.content.ActivityNotFoundException) {
++            Timber.i("No app to open %s, ignoring", url)
++        }
+         return true
+     }
+ 
+diff --git a/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebViewClient.kt b/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebViewClient.kt
+index a37c210..ba5711a 100644
+--- a/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebViewClient.kt
++++ b/app/src/main/java/org/jellyfin/mobile/webapp/JellyfinWebViewClient.kt
+@@ -1,5 +1,8 @@
+ package org.jellyfin.mobile.webapp
+ 
++import android.content.ActivityNotFoundException
++import android.content.Intent
++import android.net.Uri
+ import android.net.http.SslError
+ import android.webkit.SslErrorHandler
+ import android.webkit.WebResourceRequest
+@@ -40,6 +43,35 @@ abstract class JellyfinWebViewClient(
+ 
+     abstract fun onErrorReceived()
+ 
++    /**
++     * Phoenicxfin: the app only displays the Jellyfin server the user connected to.
++     * Any other page is never loaded inside the app; it is handed to another app if one exists, otherwise ignored.
++     */
++    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
++        !isServerUrl(request.url) && openOutside(view, request.url)
++
++    @Deprecated("Deprecated in Android")
++    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
++        val uri = Uri.parse(url)
++        return !isServerUrl(uri) && openOutside(view, uri)
++    }
++
++    private fun isServerUrl(uri: Uri): Boolean {
++        val scheme = uri.scheme?.lowercase(Locale.ROOT)
++        if (scheme == "about" || scheme == "data" || scheme == "blob" || scheme == "javascript") return true
++        val serverHost = Uri.parse(server.hostname).host ?: return false
++        return uri.host.equals(serverHost, ignoreCase = true)
++    }
++
++    private fun openOutside(view: WebView, uri: Uri): Boolean {
++        try {
++            view.context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
++        } catch (e: ActivityNotFoundException) {
++            Timber.i("No app to open %s, ignoring", uri)
++        }
++        return true
++    }
++
+     override fun shouldInterceptRequest(webView: WebView, request: WebResourceRequest): WebResourceResponse? {
+         val url = request.url
+         val path = url.path?.lowercase(Locale.ROOT) ?: return null
 diff --git a/app/src/main/java/org/jellyfin/mobile/webapp/WebViewFragment.kt b/app/src/main/java/org/jellyfin/mobile/webapp/WebViewFragment.kt
 index 2d4dcc5..abce7a8 100644
 --- a/app/src/main/java/org/jellyfin/mobile/webapp/WebViewFragment.kt
